@@ -1,6 +1,6 @@
+import os
 import numpy as np
 import pandas as pd
-import os
 import cv2
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -8,6 +8,7 @@ from tqdm import tqdm
 import requests
 import zipfile
 import io
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 class EmotionDatasetPreparator:
     def __init__(self, data_dir='data'):
@@ -15,17 +16,17 @@ class EmotionDatasetPreparator:
         Initialize the dataset preparator
         
         Args:
-            data_dir: Directory to store datasets
+            data_dir: Directory containing the dataset
         """
         self.data_dir = data_dir
         self.emotion_labels = {
-            0: 'Angry',
-            1: 'Disgust',
-            2: 'Fear',
-            3: 'Happy',
-            4: 'Sad',
-            5: 'Surprise',
-            6: 'Neutral'
+            0: 'angry',
+            1: 'disgust',
+            2: 'fear',
+            3: 'happy',
+            4: 'sad',
+            5: 'surprise',
+            6: 'neutral'
         }
         
         # Create data directory if it doesn't exist
@@ -77,7 +78,7 @@ class EmotionDatasetPreparator:
     
     def load_fer2013(self, csv_path=None):
         """
-        Load the FER2013 dataset
+        Load the FER2013 dataset from CSV
         
         Args:
             csv_path: Path to the fer2013.csv file
@@ -129,9 +130,156 @@ class EmotionDatasetPreparator:
             print(f"Error loading dataset: {e}")
             return None
     
+    def load_processed_dataset(self, filename='processed_dataset.npz'):
+        """
+        Load a previously processed dataset or prepare from directory structure
+        
+        Args:
+            filename: Filename of the processed dataset
+            
+        Returns:
+            Dictionary containing the processed dataset if successful, None otherwise
+        """
+        load_path = os.path.join(self.data_dir, filename)
+        
+        # Check if processed dataset exists
+        if os.path.exists(load_path):
+            try:
+                data = np.load(load_path)
+                
+                dataset = {
+                    'X_train': data['X_train'],
+                    'y_train': data['y_train'],
+                    'X_val': data['X_val'],
+                    'y_val': data['y_val'],
+                    'X_test': data['X_test'],
+                    'y_test': data['y_test'],
+                    'emotion_labels': self.emotion_labels
+                }
+                
+                print("Processed dataset loaded successfully")
+                print(f"Training set: {dataset['X_train'].shape[0]} samples")
+                print(f"Validation set: {dataset['X_val'].shape[0]} samples")
+                print(f"Test set: {dataset['X_test'].shape[0]} samples")
+                
+                return dataset
+            except Exception as e:
+                print(f"Error loading processed dataset: {e}")
+        
+        # If no processed dataset exists, check if we have a directory-based dataset
+        print("No processed dataset found. Checking for directory-based dataset...")
+        test_dir = os.path.join(self.data_dir, 'archive', 'test')
+        
+        if os.path.exists(test_dir) and os.path.isdir(test_dir):
+            print(f"Found directory-based dataset at {test_dir}")
+            return self.prepare_dataset_from_directory()
+        else:
+            # Try to prepare using CSV if available
+            return self.prepare_dataset()
+    
+    def prepare_dataset_from_directory(self):
+        """
+        Prepare dataset from directory structure with emotion folders
+        
+        Returns:
+            Dictionary containing the processed dataset
+        """
+        # Path to the test directory containing emotion folders
+        test_dir = os.path.join(self.data_dir, 'archive', 'test')
+        
+        if not os.path.exists(test_dir):
+            print(f"Dataset directory not found at {test_dir}")
+            return None
+            
+        print(f"Preparing dataset from directory: {test_dir}")
+        
+        # Create data generators
+        datagen = ImageDataGenerator(
+            rescale=1./255,
+            validation_split=0.2  # 20% for validation
+        )
+        
+        # Training generator
+        train_generator = datagen.flow_from_directory(
+            test_dir,
+            target_size=(48, 48),
+            batch_size=32,
+            class_mode='categorical',
+            color_mode='grayscale',
+            subset='training',
+            shuffle=True
+        )
+        
+        # Validation generator
+        val_generator = datagen.flow_from_directory(
+            test_dir,
+            target_size=(48, 48),
+            batch_size=32,
+            class_mode='categorical',
+            color_mode='grayscale',
+            subset='validation',
+            shuffle=False
+        )
+        
+        print(f"Found {train_generator.samples} training images")
+        print(f"Found {val_generator.samples} validation images")
+        print(f"Class mapping: {train_generator.class_indices}")
+        
+        # Load all images from generators
+        X_train = []
+        y_train = []
+        print("Loading training images...")
+        for i in tqdm(range(len(train_generator))):
+            X_batch, y_batch = next(train_generator)
+            X_train.append(X_batch)
+            y_train.append(y_batch)
+            
+        X_val = []
+        y_val = []
+        print("Loading validation images...")
+        for i in tqdm(range(len(val_generator))):
+            X_batch, y_batch = next(val_generator)
+            X_val.append(X_batch)
+            y_val.append(y_batch)
+            
+        # Combine batches
+        X_train = np.vstack(X_train)
+        y_train = np.vstack(y_train)
+        X_val = np.vstack(X_val)
+        y_val = np.vstack(y_val)
+        
+        # Create a test set from part of validation data
+        test_size = int(len(X_val) * 0.5)
+        X_test = X_val[:test_size].copy()
+        y_test = y_val[:test_size].copy()
+        X_val = X_val[test_size:].copy()
+        y_val = y_val[test_size:].copy()
+        
+        # Create dataset dictionary
+        dataset = {
+            'X_train': X_train,
+            'y_train': y_train,
+            'X_val': X_val,
+            'y_val': y_val,
+            'X_test': X_test,
+            'y_test': y_test,
+            'emotion_labels': self.emotion_labels
+        }
+        
+        # Print dataset statistics
+        print("\nDataset Statistics:")
+        print(f"Training set: {X_train.shape[0]} samples")
+        print(f"Validation set: {X_val.shape[0]} samples")
+        print(f"Test set: {X_test.shape[0]} samples")
+        
+        # Save processed dataset for future use
+        self.save_dataset(dataset)
+        
+        return dataset
+    
     def prepare_dataset(self, test_size=0.1, val_size=0.1, random_state=42):
         """
-        Prepare the dataset for training
+        Prepare the dataset for training from CSV
         
         Args:
             test_size: Proportion of data to use for testing
@@ -141,10 +289,12 @@ class EmotionDatasetPreparator:
         Returns:
             Dictionary with train, val, test splits if successful, None otherwise
         """
-        # Load the dataset
+        # Try to load from CSV first
         data = self.load_fer2013()
         if data is None:
-            return None
+            print("Could not load dataset from CSV. Checking directory structure...")
+            # Try directory-based dataset as fallback
+            return self.prepare_dataset_from_directory()
             
         images, emotions = data
         
@@ -240,46 +390,6 @@ class EmotionDatasetPreparator:
         
         print(f"Processed dataset saved to {save_path}")
     
-    def load_processed_dataset(self, filename='processed_dataset.npz'):
-        """
-        Load a previously processed dataset from disk
-        
-        Args:
-            filename: Filename of the processed dataset
-            
-        Returns:
-            Dictionary containing the processed dataset if successful, None otherwise
-        """
-        load_path = os.path.join(self.data_dir, filename)
-        
-        if not os.path.exists(load_path):
-            print(f"Processed dataset not found at {load_path}")
-            return None
-            
-        try:
-            data = np.load(load_path)
-            
-            dataset = {
-                'X_train': data['X_train'],
-                'y_train': data['y_train'],
-                'X_val': data['X_val'],
-                'y_val': data['y_val'],
-                'X_test': data['X_test'],
-                'y_test': data['y_test'],
-                'emotion_labels': self.emotion_labels
-            }
-            
-            print("Processed dataset loaded successfully")
-            print(f"Training set: {dataset['X_train'].shape[0]} samples")
-            print(f"Validation set: {dataset['X_val'].shape[0]} samples")
-            print(f"Test set: {dataset['X_test'].shape[0]} samples")
-            
-            return dataset
-            
-        except Exception as e:
-            print(f"Error loading processed dataset: {e}")
-            return None
-    
     def visualize_samples(self, dataset, num_samples=5):
         """
         Visualize random samples from the dataset
@@ -322,33 +432,13 @@ if __name__ == "__main__":
     # Prompt user for dataset location
     print("FER2013 Dataset Preparation")
     print("===========================")
-    print("Do you have the dataset already downloaded? (y/n)")
+    print("Checking for dataset...")
     
-    have_dataset = input().strip().lower() == 'y'
-    
-    if have_dataset:
-        print("Please enter the path to the fer2013.csv file:")
-        csv_path = input().strip()
-        if not csv_path:
-            csv_path = None  # Use default path
-    else:
-        print("Please download the FER2013 dataset manually:")
-        print("1. Visit https://www.kaggle.com/datasets/msambare/fer2013")
-        print("2. Download the dataset ZIP file")
-        print(f"3. Extract 'fer2013.csv' to the '{preparator.data_dir}' directory")
-        print("\nAlternatively, you can use a simplified dataset for testing.")
-        print("Would you like to download a small testing subset? (y/n)")
-        
-        download_test = input().strip().lower() == 'y'
-        if download_test:
-            # URL for a small subset of FER2013 for testing
-            test_url = "https://github.com/muxspace/facial_expressions/raw/master/data/fer2013.csv"
-            preparator.download_fer2013(url=test_url)
-        csv_path = None  # Use default path
-    
-    # Prepare the dataset
-    dataset = preparator.prepare_dataset()
+    # Try to load processed dataset
+    dataset = preparator.load_processed_dataset()
     
     if dataset is not None:
         # Visualize some samples
         preparator.visualize_samples(dataset)
+    else:
+        print("No dataset found. Please check your data directory structure.")

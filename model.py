@@ -175,7 +175,8 @@ class EmotionRecognitionModel:
                 steps_per_epoch=len(X_train) // batch_size,
                 epochs=epochs,
                 validation_data=(X_val, y_val),
-                callbacks=callbacks
+                callbacks=callbacks,
+                verbose=1  # Ensure training progress is displayed
             )
         else:
             # Train without data augmentation
@@ -184,7 +185,8 @@ class EmotionRecognitionModel:
                 batch_size=batch_size,
                 epochs=epochs,
                 validation_data=(X_val, y_val),
-                callbacks=callbacks
+                callbacks=callbacks,
+                verbose=1  # Ensure training progress is displayed
             )
             
         return history
