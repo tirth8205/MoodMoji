@@ -112,12 +112,22 @@ def train_emotion_model(args):
     steps_per_epoch = max(1, steps_per_epoch)
     validation_steps = max(1, validation_steps)
     
+    # Wrapper to reset generators each epoch
+    def reset_generator(generator, steps):
+        while True:
+            generator.reset()
+            for _ in range(steps):
+                yield next(generator)
+    
+    train_gen = reset_generator(train_generator, steps_per_epoch)
+    val_gen = reset_generator(val_generator, validation_steps)
+    
     # Train the model
     history = model.fit(
-        train_generator,
+        train_gen,
         epochs=args.epochs,
         steps_per_epoch=steps_per_epoch,
-        validation_data=val_generator,
+        validation_data=val_gen,
         validation_steps=validation_steps,
         callbacks=callbacks,
         verbose=1
