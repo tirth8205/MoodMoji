@@ -9,6 +9,7 @@ import time
 import datetime
 import argparse
 import queue
+import webbrowser  # Added for opening playlist links
 
 # Import project modules
 from face_detector import FaceDetector
@@ -50,6 +51,17 @@ class MoodMojiApp:
         
         # Create update queue for thread-safe UI updates
         self.update_queue = queue.Queue()
+        
+        # Predefined Spotify playlist links for each emotion
+        self.mood_playlists = {
+            "Angry": ("Angry Mood", "https://open.spotify.com/playlist/37i9dQZF1DXdN2c9c2f2zL"),
+            "Disgust": ("Introspective", "https://open.spotify.com/playlist/37i9dQZF1DX8z1UWb4fNdS"),
+            "Fear": ("Anxious Mood", "https://open.spotify.com/playlist/37i9dQZF1DX5pP5u2doTUe"),
+            "Happy": ("Happy Vibes", "https://open.spotify.com/playlist/37i9dQZF1DX1Hya1sRqqxI"),
+            "Sad": ("Sad Songs", "https://open.spotify.com/playlist/37i9dQZF1DX7gIoKzGlgux"),
+            "Surprise": ("Surprise Party", "https://open.spotify.com/playlist/37i9dQZF1DX4g8GsAL2jXv"),
+            "Neutral": ("Chill Hits", "https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6")
+        }
         
         # Initialize components
         self.init_ui_components()
@@ -200,6 +212,20 @@ class MoodMojiApp:
             mode='determinate'
         )
         self.confidence_bar.pack(fill=tk.X, pady=5)
+        
+        # Playlist label (new)
+        self.playlist_label = ttk.Label(
+            control_frame,
+            text="Mood Playlist: None",
+            font=("Arial", 10),
+            foreground="blue",
+            background="#f0f0f0",
+            cursor="hand2",
+            anchor=tk.CENTER
+        )
+        self.playlist_label.pack(fill=tk.X, pady=5)
+        self.playlist_label.bind("<Button-1>", self.open_playlist)
+        self.current_playlist_url = None
         
         # Configure grid weights
         main_frame.grid_rowconfigure(0, weight=3)
@@ -429,6 +455,9 @@ class MoodMojiApp:
                     # Update UI with emotion information
                     self.update_emotion_ui(emotion_label, self.current_emotion_confidence)
                     
+                    # Update playlist with predefined link
+                    self.update_playlist(emotion_label)
+                    
                     # Display emoji
                     emoji = self.emoji_mapper.get_emoji(self.current_emotion_id)
                     self.update_queue.put(lambda e=emoji: self.display_emoji(e))
@@ -573,6 +602,28 @@ class MoodMojiApp:
             self.status_label.config(text="Processing emotions")
         except Exception as e:
             print(f"Error updating emotion UI: {e}")
+            
+    def update_playlist(self, emotion_label):
+        """
+        Update the playlist label with a predefined Spotify playlist link based on the detected emotion
+        
+        Args:
+            emotion_label: The detected emotion label (e.g., "Sad", "Happy")
+        """
+        playlist_info = self.mood_playlists.get(emotion_label, self.mood_playlists["Neutral"])
+        playlist_name, playlist_url = playlist_info
+        self.current_playlist_url = playlist_url
+        self.update_queue.put(lambda: self.playlist_label.config(text=f"Mood Playlist: {playlist_name} (Click to Open)"))
+    
+    def open_playlist(self, event):
+        """
+        Open the Spotify playlist link in the user's default web browser
+        
+        Args:
+            event: The click event from the playlist label
+        """
+        if self.current_playlist_url:
+            webbrowser.open(self.current_playlist_url)
         
     def toggle_demo_mode(self):
         """
