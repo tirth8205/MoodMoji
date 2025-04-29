@@ -90,6 +90,9 @@ class MoodMojiApp:
         # Start the queue processing
         self.process_queue()
         
+        # Start periodic UI updates (macOS fix)
+        self.schedule_ui_update()
+        
         # Display debug info
         self.display_debug_info()
         
@@ -240,7 +243,16 @@ class MoodMojiApp:
         
         # Schedule to run again
         self.root.after(10, self.process_queue)
-        
+    
+    def schedule_ui_update(self):
+        """
+        Schedule periodic UI updates to ensure rendering (macOS fix)
+        """
+        if self.running:
+            self.root.update_idletasks()
+            self.root.update()
+        self.root.after(50, self.schedule_ui_update)
+    
     def toggle_webcam(self):
         """
         Toggle webcam on/off
@@ -372,7 +384,7 @@ class MoodMojiApp:
                         # Predict emotion
                         emotion_id, confidence = self.emotion_model.predict(input_face)
                         print(f"Frame {frame_count}: Predicted emotion_id={emotion_id}, confidence={confidence}")
-                                        
+                        
                         # Update emotion if confidence is high enough and stable
                         current_time = time.time()
                         if (confidence > 0.5 and 
@@ -481,9 +493,14 @@ class MoodMojiApp:
             image=photo, 
             anchor=tk.CENTER
         )
+        print("Canvas updated with new frame")
         
         # Keep reference to prevent garbage collection
         self.video_canvas.image = photo
+        
+        # Force UI update (macOS fix)
+        self.root.update_idletasks()
+        self.root.update()
         
     def display_emoji(self, emoji):
         """
