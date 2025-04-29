@@ -346,26 +346,33 @@ class MoodMojiApp:
                 # Prepare face for emotion recognition
                 if not self.args.demo_mode and self.emotion_model.model is not None:
                     try:
-                        print(f"Processing face image with shape: {face_img.shape}")
+                        print(f"Processing face image with shape: {face_img.shape}, dtype: {face_img.dtype}")
                         if face_img.size == 0 or face_img.shape[0] == 0 or face_img.shape[1] == 0:
                             print("Warning: Face image is empty or invalid, skipping emotion recognition")
                             continue  # Skip to the next frame
+                        if not np.all(np.isfinite(face_img)):
+                            print("Warning: Face image contains invalid values (NaN/Inf), skipping emotion recognition")
+                            continue
                         # Convert to grayscale
                         gray_face = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+                        print(f"Converted to grayscale, shape: {gray_face.shape}, dtype: {gray_face.dtype}")
                         
                         # Resize to model input size
                         resized_face = cv2.resize(gray_face, (48, 48))
+                        print(f"Resized face, shape: {resized_face.shape}, dtype: {resized_face.dtype}")
                         
                         # Normalize pixel values
                         normalized_face = resized_face / 255.0
+                        print(f"Normalized face, shape: {normalized_face.shape}, dtype: {normalized_face.dtype}, min: {normalized_face.min()}, max: {normalized_face.max()}")
                         
                         # Reshape for model input
                         input_face = normalized_face.reshape(1, 48, 48, 1)
+                        print(f"Reshaped for model, shape: {input_face.shape}, dtype: {input_face.dtype}")
                         
                         # Predict emotion
                         emotion_id, confidence = self.emotion_model.predict(input_face)
                         print(f"Frame {frame_count}: Predicted emotion_id={emotion_id}, confidence={confidence}")
-                        
+                                        
                         # Update emotion if confidence is high enough and stable
                         current_time = time.time()
                         if (confidence > 0.5 and 

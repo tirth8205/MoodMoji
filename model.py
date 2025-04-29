@@ -233,28 +233,38 @@ class EmotionRecognitionModel:
         if self.model is None:
             print("No model loaded")
             return None
-            
+        
+        # Debug input image
+        print(f"Predicting on image with shape: {image.shape}, dtype: {image.dtype}, min: {image.min()}, max: {image.max()}")
+        
         # Ensure image has correct shape
-        if len(image.shape) == 3 and image.shape[-1] == 1:
-            # Already in the right format
+        if len(image.shape) == 4 and image.shape[0] == 1 and image.shape[1] == 48 and image.shape[2] == 48 and image.shape[3] == 1:
+            # Already in the right format (batch, height, width, channels)
             processed_image = image
+        elif len(image.shape) == 3 and image.shape[-1] == 1:
+            # Shape (height, width, channels), add batch dimension
+            processed_image = image.reshape(1, image.shape[0], image.shape[1], 1)
         elif len(image.shape) == 2:
-            # Convert grayscale to proper shape
+            # Shape (height, width), add batch and channel dimensions
             processed_image = image.reshape(1, image.shape[0], image.shape[1], 1)
         elif len(image.shape) == 3 and image.shape[-1] == 3:
-            # Convert RGB to grayscale
+            # Shape (height, width, 3), convert RGB to grayscale and reshape
             gray = np.mean(image, axis=-1).astype(np.uint8)
             processed_image = gray.reshape(1, gray.shape[0], gray.shape[1], 1)
         else:
-            raise ValueError("Unexpected image shape")
-            
-        # Normalize pixel values to [0, 1]
-        processed_image = processed_image.astype('float32') / 255.0
+            raise ValueError(f"Unexpected image shape: {image.shape}")
+        
+        print(f"Processed image for prediction, shape: {processed_image.shape}, dtype: {processed_image.dtype}")
+        
+        # Ensure the image is float32 (TensorFlow expects float32)
+        processed_image = processed_image.astype('float32')
+        print(f"After dtype conversion for prediction, shape: {processed_image.shape}, dtype: {processed_image.dtype}, min: {processed_image.min()}, max: {processed_image.max()}")
         
         # Make prediction
         predictions = self.model.predict(processed_image)
         emotion_idx = np.argmax(predictions[0])
         confidence = predictions[0][emotion_idx]
+        print(f"Prediction result: emotion_idx={emotion_idx}, confidence={confidence}, predictions shape: {predictions.shape}")
         
         return emotion_idx, confidence
 
