@@ -8,6 +8,7 @@ import threading
 import time
 import datetime
 import argparse
+import queue
 
 # Import project modules
 from face_detector import FaceDetector
@@ -30,9 +31,13 @@ class MoodMojiApp:
         # Initialize the main window
         self.root = tk.Tk()
         self.root.title("MoodMoji: AI Emotion-to-Emoji Personality Mirror")
-        self.root.geometry("1000x600")
-        self.root.resizable(True, True)
+        self.root.geometry("1000x600")  # Set explicit size
         self.root.configure(background='#f0f0f0')
+        
+        # Force focus on window (macOS fix)
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.after(1000, lambda: self.root.attributes("-topmost", False))
         
         # Set app icon if available
         try:
@@ -43,8 +48,15 @@ class MoodMojiApp:
         except Exception as e:
             print(f"Could not set app icon: {e}")
         
+        # Create update queue for thread-safe UI updates
+        self.update_queue = queue.Queue()
+        
         # Initialize components
         self.init_ui_components()
+        
+        # Force update after UI initialization (macOS fix)
+        self.root.update_idletasks()
+        self.root.update()  # Force full redraw
         
         # Initialize the face detector
         self.face_detector = FaceDetector(min_confidence=0.5)
@@ -75,6 +87,12 @@ class MoodMojiApp:
         self.video_thread = None
         self.running = False
         
+        # Start the queue processing
+        self.process_queue()
+        
+        # Display debug info
+        self.display_debug_info()
+        
         # Start webcam if auto_start is enabled
         if args.auto_start:
             self.start_webcam()
@@ -86,11 +104,14 @@ class MoodMojiApp:
         """
         Initialize UI components
         """
-        # Create the main frame
+        # Create the main frame with visible border
         main_frame = ttk.Frame(self.root, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Create video frame
+        # Force main_frame to have minimum size (macOS fix)
+        main_frame.pack_propagate(False)
+        
+        # Create video frame with visible border
         self.video_frame = ttk.LabelFrame(main_frame, text="Video Feed", padding=5)
         self.video_frame.grid(row=0, column=0, rowspan=2, padx=5, pady=5, sticky="nsew")
         
@@ -98,7 +119,7 @@ class MoodMojiApp:
         self.video_canvas = tk.Canvas(self.video_frame, width=640, height=480, bg="black")
         self.video_canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Create emoji frame
+        # Create emoji frame with visible border
         self.emoji_frame = ttk.LabelFrame(main_frame, text="Your MoodMoji", padding=5)
         self.emoji_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
         
@@ -106,7 +127,7 @@ class MoodMojiApp:
         self.emoji_canvas = tk.Canvas(self.emoji_frame, width=200, height=200, bg="#f0f0f0")
         self.emoji_canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Create control frame
+        # Create control frame with visible border
         control_frame = ttk.LabelFrame(main_frame, text="Controls", padding=5)
         control_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
         
@@ -137,26 +158,35 @@ class MoodMojiApp:
         )
         self.demo_check.pack(fill=tk.X, pady=5)
         
-        # Status label
+        # Status label with explicit foreground color
         self.status_label = ttk.Label(
             control_frame, 
             text="Ready to start", 
             font=("Arial", 10),
+            foreground="black",
+            background="#f0f0f0",
             anchor=tk.CENTER
         )
         self.status_label.pack(fill=tk.X, pady=10)
         
-        # Emotion label
+        # Emotion label with explicit foreground color
         self.emotion_label = ttk.Label(
             control_frame, 
             text="No emotion detected", 
             font=("Arial", 12, "bold"),
+            foreground="black",
+            background="#f0f0f0",
             anchor=tk.CENTER
         )
         self.emotion_label.pack(fill=tk.X, pady=5)
         
         # Confidence bar
-        self.confidence_label = ttk.Label(control_frame, text="Confidence: 0%")
+        self.confidence_label = ttk.Label(
+            control_frame, 
+            text="Confidence: 0%",
+            foreground="black",
+            background="#f0f0f0"
+        )
         self.confidence_label.pack(fill=tk.X, pady=2)
         
         self.confidence_bar = ttk.Progressbar(
@@ -172,6 +202,43 @@ class MoodMojiApp:
         main_frame.grid_rowconfigure(1, weight=1)
         main_frame.grid_columnconfigure(0, weight=3)
         main_frame.grid_columnconfigure(1, weight=1)
+    
+    def display_debug_info(self):
+        """
+        Display debug information about UI components
+        """
+        debug_text = (
+            f"Window size: {self.root.winfo_width()}x{self.root.winfo_height()}\n"
+            f"Video canvas: {self.video_canvas.winfo_width()}x{self.video_canvas.winfo_height()}\n"
+            f"Emoji canvas: {self.emoji_canvas.winfo_width()}x{self.emoji_canvas.winfo_height()}\n"
+        )
+        
+        debug_label = ttk.Label(
+            self.root,
+            text=debug_text,
+            font=("Arial", 10),
+            foreground="black",
+            background="#ffcccc",
+            anchor=tk.W
+        )
+        debug_label.pack(side=tk.BOTTOM, fill=tk.X)
+    
+    def process_queue(self):
+        """
+        Process the UI update queue to ensure thread safety
+        """
+        try:
+            while True:
+                task = self.update_queue.get_nowait()
+                try:
+                    task()
+                except Exception as e:
+                    print(f"Error processing queue task: {e}")
+        except queue.Empty:
+            pass
+        
+        # Schedule to run again
+        self.root.after(10, self.process_queue)
         
     def toggle_webcam(self):
         """
@@ -227,15 +294,16 @@ class MoodMojiApp:
         
         # Display black screen
         black_screen = np.zeros((480, 640, 3), dtype=np.uint8)
-        self.display_frame(black_screen)
+        self.update_queue.put(lambda: self.display_frame(black_screen))
         
         # Reset emoji display
-        self.display_emoji(None)
+        self.update_queue.put(lambda: self.display_emoji(None))
         
     def update_frame(self):
         """
         Update video frame (runs in separate thread)
         """
+        frame_count = 0
         while self.running:
             ret, frame = self.cap.read()
             
@@ -243,11 +311,15 @@ class MoodMojiApp:
                 print("Error: Could not read frame")
                 break
                 
+            print(f"Frame {frame_count}: Captured successfully, shape: {frame.shape}")
+            frame_count += 1
+                
             # Flip horizontally for mirror effect
             frame = cv2.flip(frame, 1)
             
             # Detect faces
             faces = self.face_detector.detect_faces(frame)
+            print(f"Frame {frame_count}: Detected {len(faces)} faces: {faces}")
             
             # Process detected faces
             if len(faces) > 0:
@@ -287,6 +359,7 @@ class MoodMojiApp:
                         
                         # Predict emotion
                         emotion_id, confidence = self.emotion_model.predict(input_face)
+                        print(f"Frame {frame_count}: Predicted emotion_id={emotion_id}, confidence={confidence}")
                         
                         # Update emotion if confidence is high enough and stable
                         current_time = time.time()
@@ -300,7 +373,7 @@ class MoodMojiApp:
                             self.current_emotion_id = emotion_id
                             self.current_emotion_confidence = confidence
                     except Exception as e:
-                        print(f"Error in emotion recognition: {e}")
+                        print(f"Frame {frame_count}: Error in emotion recognition: {e}")
                 elif self.args.demo_mode:
                     # In demo mode, cycle through emotions every few seconds
                     current_time = time.time()
@@ -308,6 +381,7 @@ class MoodMojiApp:
                         self.current_emotion_id = (self.current_emotion_id + 1) % 7
                         self.current_emotion_confidence = np.random.uniform(0.7, 0.95)
                         self.last_emotion_change_time = current_time
+                        print(f"Frame {frame_count}: Demo mode - emotion_id={self.current_emotion_id}, confidence={self.current_emotion_confidence}")
                 
                 # Draw rectangle around face
                 cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
@@ -333,14 +407,14 @@ class MoodMojiApp:
                     
                     # Display emoji
                     emoji = self.emoji_mapper.get_emoji(self.current_emotion_id)
-                    self.display_emoji(emoji)
+                    self.update_queue.put(lambda e=emoji: self.display_emoji(e))
             else:
                 # No face detected
-                self.status_label.config(text="No face detected")
+                self.update_queue.put(lambda: self.status_label.config(text="No face detected"))
                 self.current_face_img = None
                 
             # Display the frame
-            self.display_frame(frame)
+            self.update_queue.put(lambda f=frame.copy(): self.display_frame(f))
             
             # Limit frame rate to reduce CPU usage
             time.sleep(0.03)  # ~30 FPS
@@ -362,26 +436,32 @@ class MoodMojiApp:
         canvas_width = self.video_canvas.winfo_width()
         canvas_height = self.video_canvas.winfo_height()
         
-        if canvas_width > 1 and canvas_height > 1:
-            # Calculate the scaling factor to maintain aspect ratio
-            img_aspect = frame.shape[1] / frame.shape[0]
-            canvas_aspect = canvas_width / canvas_height
+        # Ensure minimum dimensions (macOS fix)
+        if canvas_width < 10:
+            canvas_width = 640
+        if canvas_height < 10:
+            canvas_height = 480
             
-            if img_aspect > canvas_aspect:
-                # Width constrained
-                new_width = canvas_width
-                new_height = int(canvas_width / img_aspect)
-            else:
-                # Height constrained
-                new_height = canvas_height
-                new_width = int(canvas_height * img_aspect)
-                
-            img = img.resize((new_width, new_height), Image.LANCZOS)
+        # Calculate the scaling factor to maintain aspect ratio
+        img_aspect = frame.shape[1] / frame.shape[0]
+        canvas_aspect = canvas_width / canvas_height
+        
+        if img_aspect > canvas_aspect:
+            # Width constrained
+            new_width = canvas_width
+            new_height = int(canvas_width / img_aspect)
+        else:
+            # Height constrained
+            new_height = canvas_height
+            new_width = int(canvas_height * img_aspect)
+            
+        img = img.resize((new_width, new_height), Image.LANCZOS)
         
         # Convert to PhotoImage
         photo = ImageTk.PhotoImage(image=img)
         
         # Update canvas
+        self.video_canvas.delete("all")
         self.video_canvas.create_image(
             canvas_width // 2, 
             canvas_height // 2, 
@@ -405,32 +485,41 @@ class MoodMojiApp:
         if emoji is None:
             return
             
-        # Convert BGRA to RGBA
-        rgba_emoji = cv2.cvtColor(emoji, cv2.COLOR_BGRA2RGBA)
-        
-        # Convert to PhotoImage
-        img = Image.fromarray(rgba_emoji)
-        
-        # Resize to fit canvas
-        canvas_width = self.emoji_canvas.winfo_width()
-        canvas_height = self.emoji_canvas.winfo_height()
-        
-        if canvas_width > 1 and canvas_height > 1:
+        try:
+            # Convert BGRA to RGBA
+            rgba_emoji = cv2.cvtColor(emoji, cv2.COLOR_BGRA2RGBA)
+            
+            # Convert to PhotoImage
+            img = Image.fromarray(rgba_emoji)
+            
+            # Resize to fit canvas
+            canvas_width = self.emoji_canvas.winfo_width()
+            canvas_height = self.emoji_canvas.winfo_height()
+            
+            # Ensure minimum dimensions (macOS fix)
+            if canvas_width < 10:
+                canvas_width = 200
+            if canvas_height < 10:
+                canvas_height = 200
+                
             img = img.resize((canvas_width, canvas_height), Image.LANCZOS)
-        
-        # Convert to PhotoImage
-        photo = ImageTk.PhotoImage(image=img)
-        
-        # Update canvas
-        self.emoji_canvas.create_image(
-            canvas_width // 2, 
-            canvas_height // 2, 
-            image=photo, 
-            anchor=tk.CENTER
-        )
-        
-        # Keep reference to prevent garbage collection
-        self.emoji_canvas.image = photo
+            
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image=img)
+            
+            # Update canvas
+            self.emoji_canvas.delete("all")
+            self.emoji_canvas.create_image(
+                canvas_width // 2, 
+                canvas_height // 2, 
+                image=photo, 
+                anchor=tk.CENTER
+            )
+            
+            # Keep reference to prevent garbage collection
+            self.emoji_canvas.image = photo
+        except Exception as e:
+            print(f"Error displaying emoji: {e}")
         
     def update_emotion_ui(self, emotion_label, confidence):
         """
@@ -440,17 +529,20 @@ class MoodMojiApp:
             emotion_label: Emotion label text
             confidence: Confidence value (0-1)
         """
-        # Update on main thread
-        self.root.after(0, lambda: self._update_emotion_ui_impl(emotion_label, confidence))
+        # Update on main thread via queue
+        self.update_queue.put(lambda: self._update_emotion_ui_impl(emotion_label, confidence))
         
     def _update_emotion_ui_impl(self, emotion_label, confidence):
         """
         Implementation of update_emotion_ui to run on main thread
         """
-        self.emotion_label.config(text=f"Emotion: {emotion_label}")
-        self.confidence_label.config(text=f"Confidence: {confidence*100:.1f}%")
-        self.confidence_bar["value"] = confidence * 100
-        self.status_label.config(text="Processing emotions")
+        try:
+            self.emotion_label.config(text=f"Emotion: {emotion_label}")
+            self.confidence_label.config(text=f"Confidence: {confidence*100:.1f}%")
+            self.confidence_bar["value"] = confidence * 100
+            self.status_label.config(text="Processing emotions")
+        except Exception as e:
+            print(f"Error updating emotion UI: {e}")
         
     def toggle_demo_mode(self):
         """
@@ -519,6 +611,8 @@ class MoodMojiApp:
         """
         Run the application
         """
+        # Print debug info before running
+        print(f"Starting MoodMoji App. Window dimensions: {self.root.winfo_width()}x{self.root.winfo_height()}")
         self.root.mainloop()
 
 def main():
