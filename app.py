@@ -101,6 +101,7 @@ class MoodMojiApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         
     def init_ui_components(self):
+        print("Initializing UI components...")
         """
         Initialize UI components
         """
@@ -345,6 +346,10 @@ class MoodMojiApp:
                 # Prepare face for emotion recognition
                 if not self.args.demo_mode and self.emotion_model.model is not None:
                     try:
+                        print(f"Processing face image with shape: {face_img.shape}")
+                        if face_img.size == 0 or face_img.shape[0] == 0 or face_img.shape[1] == 0:
+                            print("Warning: Face image is empty or invalid, skipping emotion recognition")
+                            continue  # Skip to the next frame
                         # Convert to grayscale
                         gray_face = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
                         
@@ -426,6 +431,7 @@ class MoodMojiApp:
         Args:
             frame: OpenCV frame to display
         """
+        print(f"Displaying frame with shape: {frame.shape}")
         # Convert frame from BGR to RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         

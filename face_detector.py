@@ -15,14 +15,25 @@ class FaceDetector:
         self.detection_method = "haar"
         self.detector = None
         
+        # Pre-trained face detection model paths
+        prototxt_path = "models/deploy.prototxt"
+        model_path = "models/res10_300x300_ssd_iter_140000.caffemodel"
+        
         try:
-            self.detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            if self.detector.empty():
-                raise Exception("Haar Cascade classifier failed to load")
-            print("Using Haar Cascade face detector")
+            print(f"Attempting to load DNN model from {prototxt_path} and {model_path}")
+            self.detector = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
+            self.detection_method = "dnn"
         except Exception as e:
-            print(f"Failed to load Haar Cascade: {e}")
-            raise Exception("No face detection method available")
+            print(f"Failed to load DNN model: {str(e)}")
+            print("Using Haar Cascade as fallback")
+            try:
+                self.detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                if self.detector.empty():
+                    raise Exception("Haar Cascade classifier failed to load")
+                print("Using Haar Cascade face detector")
+            except Exception as e:
+                print(f"Failed to load Haar Cascade: {e}")
+                raise Exception("No face detection method available")
             
         self.min_confidence = min_confidence
         
@@ -41,18 +52,47 @@ class FaceDetector:
         # Make a copy to avoid modifying the original frame
         frame_rgb = frame.copy()
         
-        # Use Haar Cascade with adjusted parameters
-        gray = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2GRAY)
-        face_rects = self.detector.detectMultiScale(
-            gray, 
-            scaleFactor=1.03,  # Further reduced for better detection
-            minNeighbors=1,    # Further reduced for more sensitivity
-            minSize=(15, 15)   # Even smaller minimum face size
-        )
-        
-        for (x, y, w, h) in face_rects:
-            faces.append((x, y, w, h))
-        print("Using Haar Cascade for this frame")
+        if self.detection_method == "haar":
+            # Use Haar Cascade with adjusted parameters
+            gray = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2GRAY)
+            face_rects = self.detector.detectMultiScale(
+                gray, 
+                scaleFactor=1.03,  # Further reduced for better detection
+                minNeighbors=1,    # Further reduced for more sensitivity
+                minSize=(15, 15)   # Even smaller minimum face size
+            )
+            
+            for (x, y, w, h) in face_rects:
+                faces.append((x, y, w, h))
+            print("Using Haar Cascade for this frame")
+        else:
+            # Use DNN detector
+            (h, w) = frame_rgb.shape[:2]
+            # Create a blob from the image
+            blob = cv2.dnn.blobFromImage(
+                cv2.resize(frame_rgb, (300, 300)), 
+                1.0, 
+                (300, 300), 
+                (104.0, 177.0, 123.0)
+            )
+            
+            # Pass the blob through the network
+            self.detector.setInput(blob)
+            detections = self.detector.forward()
+            
+            # Loop over detections
+            for i in range(0, detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                
+                # Filter weak detections
+                if confidence > self.min_confidence:
+                    # Compute bounding box coordinates
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    (startX, startY, endX, endY) = box.astype("int")
+                    
+                    # Convert to (x, y, w, h) format
+                    faces.append((startX, startY, endX - startX, endY - startY))
+            print("Using DNN for this frame")
                     
         return faces
     
