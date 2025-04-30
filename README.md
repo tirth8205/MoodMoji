@@ -31,11 +31,11 @@ The project is built with Python, utilizing libraries like OpenCV for webcam acc
 ## Screenshots
 Here are some snapshots of MoodMoji in action:
 
-- **Detecting Emotion with Playlist Suggestion**  
-  ![MoodMoji detecting a sad emotion with playlist suggestion](screenshots/screenshot_1.png)
+- **Detecting a Happy Emotion with Playlist Suggestion**  
+  ![MoodMoji detecting a happy emotion with playlist suggestion](screenshots/Happy.png)
 
-- **Capturing a Custom Emoji**  
-  ![MoodMoji capturing a custom emoji](screenshots/screenshot_2.png)
+- **Detecting a Sad Emotion with Playlist Suggestion**  
+  ![MoodMoji detecting a sad emotion with playlist suggestion](screenshots/Sad.png)
 
 ## Requirements
 To run MoodMoji, you’ll need the following:
@@ -154,26 +154,3 @@ For questions, suggestions, or issues, feel free to reach out:
 - The emotion recognition model is based on a pre-trained deep learning model, fine-tuned for this project.
 - Thanks to the open-source community for providing libraries like OpenCV, TensorFlow, and Tkinter.
 - Spotify playlist links are sourced from public playlists available on Spotify as of April 2025.
-- Special thanks to the contributors and users who provide feedback and suggestions for improving MoodMoji.
-```
-- This project is inspired by the growing interest in AI and emotion recognition technologies, aiming to create a fun and engaging user experience.
-```
-- The emoji mapping is based on common emotional associations with emojis, enhancing the relatability of the app.
-```
-- The custom emoji feature is a playful addition, allowing users to create and share their unique MoodMoji captures.
-```
-- The demo mode is included to ensure the app remains functional even if the model is unavailable, providing a fallback experience.
-```
-- The project is a personal endeavor by Tirth Kanani, showcasing the potential of AI in everyday applications and the intersection of technology and emotions.
-```
-- The app is designed to be a fun tool for exploring emotions and music, encouraging users to reflect on their moods and enjoy the process.
-```
-- The project is a work in progress, and future updates may include additional features, improved models, and expanded functionality based on user feedback.
-```
-- The app is intended for personal use and entertainment, and while it provides insights into emotions, it should not be used as a substitute for professional mental health support.
-```
-- The project is open to collaboration and contributions, inviting developers and enthusiasts to join in enhancing the MoodMoji experience.
-```
-- The app is a demonstration of the capabilities of AI in real-time applications, showcasing how technology can enhance our understanding of emotions and self-expression.
-```
-- The project is a reflection of the developer's passion for AI, music, and user experience design, aiming to create a unique and enjoyable application.
